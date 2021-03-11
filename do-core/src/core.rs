@@ -1,14 +1,17 @@
 use crate::instruction::{Instruction, OpCode};
-use crate::{Error, MAX_REGISTER_INDEX};
+use crate::memory::Memory;
+use crate::{Error, MAX_REGISTER_INDEX, MEMORY_SIZE};
 
 pub struct Core {
     registers: [u16; MAX_REGISTER_INDEX as usize + 1],
+    memory: Memory,
 }
 
 impl Core {
     pub fn new() -> Self {
         let mut core = Core {
             registers: [0u16; MAX_REGISTER_INDEX as usize + 1],
+            memory: Memory::new(MEMORY_SIZE),
         };
 
         // Arbitrary initial registers value.
@@ -45,7 +48,8 @@ impl Core {
         match opcode {
             OpCode::ADD => self.add(insn)?,
             OpCode::XOR => self.xor(insn)?,
-            OpCode::LD | OpCode::ST => return Err(Error::UnsupportedOpCode(opcode)),
+            OpCode::LD => self.load(insn)?,
+            OpCode::ST => self.store(insn)?,
         }
 
         Ok(())
@@ -73,6 +77,23 @@ impl Core {
         self.registers[op0] = self.registers[op0] ^ self.registers[op1];
 
         Ok(())
+    }
+
+    fn load(&mut self, insn: Instruction) -> Result<(), Error> {
+        let op0 = insn.op0() as usize;
+        let op1 = insn.op1() as usize;
+
+        self.registers[op0] = self.memory.load(self.registers[op1])?.into();
+
+        Ok(())
+    }
+
+    fn store(&mut self, insn: Instruction) -> Result<(), Error> {
+        let op0 = insn.op0() as usize;
+        let op1 = insn.op1() as usize;
+
+        self.memory
+            .store(self.registers[op1], self.registers[op0] as u8)
     }
 }
 
@@ -113,6 +134,31 @@ mod tests {
         let new_r1 = cpu.register(1)?;
 
         assert_eq!(new_r1, r1 ^ r7);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_core_ld_st() -> Result<(), Error> {
+        // Store R2 into [R3]
+        let st_insn = 0x123;
+
+        // Load [R3] into R4
+        let ld_insn = 0x043;
+
+        let mut cpu = Core::new();
+
+        let r2 = cpu.register(2)?;
+
+        let decoded_st_insn = cpu.decode(st_insn)?;
+        cpu.execute(decoded_st_insn)?;
+
+        let decoded_ld_insn = cpu.decode(ld_insn)?;
+        cpu.execute(decoded_ld_insn)?;
+
+        let r4 = cpu.register(4)?;
+
+        assert_eq!(r4, r2);
 
         Ok(())
     }
